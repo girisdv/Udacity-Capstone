@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 
-from geometry_msgs.msg import PoseStamped
 import rospy
 from std_msgs.msg import Bool
-from styx_msgs.msg import Lane
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped
+from styx_msgs.msg import Lane
 import math
 
-from twist_controller import Controller
+from twist_controller import TwistController
 
 '''
 You can build this node only after you have built (or partially built) the `waypoint_updater` node.
@@ -33,34 +32,38 @@ that we have created in the `__init__` function.
 
 '''
 
+class CarParams(object):
+    def __init__(self):
+        self.vehicle_mass = None
+        self.fuel_capacity = None
+        self.brake_deadband = None
+        self.decel_limit = None
+        self.accel_limit = None
+        self.wheel_radius = None
+        self.wheel_base = None
+        self.steer_ratio = None
+        self.max_lat_accel = None
+        self.max_steer_angle = None
+        self.min_speed = None
+
+
 class DBWNode(object):
     def __init__(self):
         rospy.init_node('dbw_node')
 
-        vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
-        fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
-        brake_deadband = rospy.get_param('~brake_deadband', .1)
-        decel_limit = rospy.get_param('~decel_limit', -5)
-        accel_limit = rospy.get_param('~accel_limit', 1.)
-        wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
-        wheel_base = rospy.get_param('~wheel_base', 2.8498)
-        steer_ratio = rospy.get_param('~steer_ratio', 14.8)
-        max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
-        max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
+        cp = CarParams()
 
-
-        config = {
-            'vehicle_mass': vehicle_mass,
-            'fuel_capacity': fuel_capacity,
-            'brake_deadband': brake_deadband,
-            'decel_limit': decel_limit,
-            'accel_limit': accel_limit,
-            'wheel_radius': wheel_radius,
-            'wheel_base': wheel_base,
-            'steer_ratio': steer_ratio,
-            'max_lat_accel': max_lat_accel,
-            'max_steer_angle': max_steer_angle
-        }
+        cp.vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
+        cp.fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
+        cp.brake_deadband = rospy.get_param('~brake_deadband', .1)
+        cp.decel_limit = rospy.get_param('~decel_limit', -5)
+        cp.accel_limit = rospy.get_param('~accel_limit', 1.)
+        cp.wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
+        cp.wheel_base = rospy.get_param('~wheel_base', 2.8498)
+        cp.steer_ratio = rospy.get_param('~steer_ratio', 14.8)
+        cp.max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
+        cp.max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
+        cp.min_speed = 0.1
 
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)
@@ -69,53 +72,60 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
-        # TODO: Create `Controller` object
-        self.controller = Controller(**config)
-
-        self.is_dbw_enabled = False
+        # self.current_pose = None # needed?
+        self.dbw_enabled = True
+        self.reset_flag = True
         self.current_velocity = None
-        self.proposed_velocity = None
-        self.final_waypoints = None
-        self.current_pose = None
-        self.previous_loop_time = rospy.get_rostime()
+        self.latest_twist_cmd = None
 
+        # TIME
+        self.previous_timestamp = rospy.get_time()
+
+        #  Create `TwistController` object
+        self.controller = TwistController(cp=cp)
 
         # Subscribe to all the topics you need to
-        self.twist_sub = rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_message_callback, queue_size=1)
-        self.velocity_sub = rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_callback, queue_size=1)
-        self.dbw_sub = rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_callback, queue_size=1)
-        self.final_wp_sub = rospy.Subscriber('final_waypoints', Lane, self.final_waypoints_cb, queue_size=1)
-        self.pose_sub = rospy.Subscriber('/current_pose', PoseStamped, self.current_pose_cb, queue_size=1)
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb, queue_size=5)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb, queue_size=5)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb, queue_size=1)
 
         self.loop()
 
+    def dbw_enabled_cb(self, dbw_enabled):
+        try:
+            self.dbw_enabled = bool(dbw_enabled.data)
+        except Exception:
+            self.dbw_enabled = dbw_enabled
+
+    def current_velocity_cb(self, current_velocity):
+        self.current_velocity = current_velocity
+
+    def twist_cmd_cb(self, twist_cmd):
+        self.latest_twist_cmd = twist_cmd
+
     def loop(self):
-        rate = rospy.Rate(50) # 50Hz
+        rate = rospy.Rate(10) #Hz
         while not rospy.is_shutdown():
-            # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            if (self.current_velocity is not None) and (self.proposed_velocity is not None) and (self.final_waypoints is not None):
-                current_time = rospy.get_rostime()
-                ros_duration = current_time - self.previous_loop_time
-                duration_in_seconds = ros_duration.secs + (1e-9 * ros_duration.nsecs)
-                self.previous_loop_time = current_time
 
-                current_linear_velocity = self.current_velocity.twist.linear.x
-                target_linear_velocity = self.proposed_velocity.twist.linear.x
+            # TIME
+            current_timestamp = rospy.get_time()
+            del_time = current_timestamp - self.previous_timestamp
+            self.previous_timestamp = current_timestamp
 
-                target_angular_velocity = self.proposed_velocity.twist.angular.z
-                
-                throttle, brake, steering = self.controller.control(target_linear_velocity,
-                                                                    target_angular_velocity,
-                                                                    current_linear_velocity, duration_in_seconds)
+            if self.dbw_enabled and self.current_velocity is not None and self.latest_twist_cmd is not None:
 
-                if not self.is_dbw_enabled or abs(self.current_velocity.twist.linear.x) < 1e-5 and abs(self.proposed_velocity.twist.linear.x) < 1e-5:
-                    # rospy.logwarn('reset controller (DBW {}, current veolocity {}, proposed velocity {})'.format(
-                    #     self.is_dbw_enabled, self.current_velocity.twist.linear.x, self.proposed_velocity.twist.linear.x))
+                if self.reset_flag:
                     self.controller.reset()
+                    self.reset_flag = False
 
-                if self.is_dbw_enabled:
-                    self.publish(throttle, brake, steering)
+                throttle, brake, steering = self.controller.control(
+                    twist_cmd=self.latest_twist_cmd,
+                    current_velocity=self.current_velocity,
+                    del_time=del_time)
+
+                self.publish(throttle, brake, steering)
+            else:
+                self.reset_flag = True
             rate.sleep()
 
     def publish(self, throttle, brake, steer):
@@ -136,59 +146,6 @@ class DBWNode(object):
         bcmd.pedal_cmd = brake
         self.brake_pub.publish(bcmd)
 
-    def twist_message_callback(self, message):
-        """
-            Message format:
-            std_msgs/Header header
-              uint32 seq
-              time stamp
-              string frame_id
-            geometry_msgs/Twist twist
-              geometry_msgs/Vector3 linear
-                float64 x
-                float64 y
-                float64 z
-              geometry_msgs/Vector3 angular
-                float64 x
-                float64 y
-                float64 z
-
-        """
-        self.proposed_velocity = message
-
-    def current_velocity_callback(self, message):
-        """
-            Message format:
-            std_msgs/Header header
-              uint32 seq
-              time stamp
-              string frame_id
-            geometry_msgs/Twist twist
-              geometry_msgs/Vector3 linear
-                float64 x
-                float64 y
-                float64 z
-              geometry_msgs/Vector3 angular
-                float64 x
-                float64 y
-                float64 z
-
-        """
-        self.current_velocity = message
-
-
-    def dbw_enabled_callback(self, message):
-        """
-            message: bool
-        """
-        rospy.logwarn("DBW_ENABLED %s" % message)
-        self.is_dbw_enabled = message.data
-
-    def final_waypoints_cb(self, message):
-        self.final_waypoints = message.waypoints
-
-    def current_pose_cb(self, message):
-        self.current_pose = message
 
 if __name__ == '__main__':
     DBWNode()
