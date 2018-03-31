@@ -7,6 +7,8 @@ from styx_msgs.msg import Lane, Waypoint
 import math
 import tf
 
+from std_msgs.msg import Int32
+
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
 
@@ -23,25 +25,28 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-
+TARGET_SPEED_MPH = 30
 
 class WaypointUpdater(object):
     def __init__(self):
-        rospy.init_node('waypoint_updater') #, log_level=rospy.DEBUG)
+        rospy.init_node('waypoint_updater')
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
+        sub3 = rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        sub5 = rospy.Subscriber('/obstacle_waypoint', Lane, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # Add other member variables you need below
         self.base_waypoints = None
         self.current_pose = None
+        self.tl_red_wp = -1
 
         rospy.loginfo("Starting WaypointUpdater...")
+
         # 10 Hz frequency
         rate = rospy.Rate(10)
         # Loop until ROS master is running
@@ -74,8 +79,12 @@ class WaypointUpdater(object):
         num_base_points = len(self.base_waypoints)
         
         final_waypoints = [self.base_waypoints[p] for p in [idx % num_base_points for idx in range(next_wp_idx, next_wp_idx + LOOKAHEAD_WPS)]]
-        # Temporary set constant speed
-        speed = 2.78 #ms -> 10kph
+        
+        if (-1 == self.tl_red_wp):
+            speed = (TARGET_SPEED_MPH * 1609.34 / 3600) #ms -> kmh
+        else:
+            speed = 0
+            
         for idx in range(len(final_waypoints)):
             self.set_waypoint_velocity(final_waypoints, idx, speed)
             
@@ -131,19 +140,23 @@ class WaypointUpdater(object):
         
     def pose_cb(self, pose):
         self.current_pose = pose
-        rospy.logdebug("Received pose")
+        rospy.loginfo("Received pose")
 
     def waypoints_cb(self, lane):
         self.base_waypoints = lane.waypoints
-        rospy.logdebug("Received {} waypoints".format(len(self.base_waypoints)))
+        rospy.loginfo("Received {} waypoints".format(len(self.base_waypoints)))
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
-        pass
+        should_publish_updated_wps = (self.tl_red_wp != self.tl_red_wp)
+        self.tl_red_wp = msg.data
+        
+        if (should_publish_updated_wps): 
+            self.publish_next_waypoints()
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
-        pass
+        self.publish_next_waypoints()
 
     def get_waypoint_velocity(self, waypoint):
         return waypoint.twist.twist.linear.x
