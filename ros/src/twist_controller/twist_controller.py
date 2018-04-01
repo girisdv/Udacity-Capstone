@@ -2,6 +2,7 @@ from pid import PID
 from yaw_controller import YawController
 from lowpass import LowPassFilter
 import math
+import rospy
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
@@ -44,7 +45,7 @@ class Controller(object):
         brake = 0
         throttle = velocity_correction
         
-        if (0.0 == current_linear_velocity and current_vel_lpf < 0.1):
+        if (math.fabs(current_linear_velocity) < 0.001 and current_vel_lpf < 0.1):
             throttle = 0
             brake = 400
         elif(throttle < 0):
