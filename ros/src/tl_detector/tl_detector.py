@@ -167,11 +167,13 @@ class TLDetector(object):
             self.prev_light_loc = None
             return False
 
-        return False
+        #return False
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-
+        height, width, channels = cv_image.shape
+        
         #Get classification
-        return self.light_classifier.get_classification(cv_image)
+        tl_result = self.light_classifier.get_classification(cv_image)
+        return tl_result
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -189,7 +191,7 @@ class TLDetector(object):
         light = None
         light_wp = -1
         tl_use = False
-
+        
         if(self.pose):
             car_position, car_dist_wp, car_dir_wp = self.get_closest_waypoint(self.pose.pose, self.waypoints.waypoints)
             tl_position, car_dist_tl, car_dir_tl = self.get_closest_waypoint(self.pose.pose, self.lights)
@@ -215,9 +217,13 @@ class TLDetector(object):
         #    + " tla=" + str(tl_angle)
         #    + ") tlst=" + str(tl_state) + " atlst=" + str(self.lights[1].state) + " wpi=" + str(light_wp) )
 
+        rospy.loginfo_throttle(5, "ptl car=" + str(car_position))
+        
         if light:
-            #state = self.get_light_state(light)
-            state = tl_state
+            state_classifier = self.get_light_state(light)
+            #state = tl_state
+            state = state_classifier
+            rospy.loginfo("ptl: " + str(state_classifier) + " " + str(tl_state))
             
             return light_wp, state
  
