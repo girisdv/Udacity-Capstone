@@ -94,13 +94,16 @@ class WaypointUpdater(object):
         self.final_waypoints_pub.publish(lane)
     
     
+    ''' 
+    Decelerate a speed before traffic light
+    '''
     def decelerate_waypoints(self, waypoints, closest_idx):
         result = []
+        stop_idx = max(self.tl_red_wp - closest_idx - 2, 0)
         for i, wp in enumerate(waypoints):
             p = Waypoint()
             p.pose = wp.pose
             
-            stop_idx = max(self.tl_red_wp - closest_idx - 2, 0)
             dist = max(0.0, self.distance(waypoints, i, stop_idx) - STOPLINE_CORRECTION)
             velocity = math.sqrt(2 * MAX_DECEL * dist)
             if velocity < 1.:
