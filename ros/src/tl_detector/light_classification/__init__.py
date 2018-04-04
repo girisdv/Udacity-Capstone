@@ -3,8 +3,8 @@ from PIL import Image
 import numpy as np
 import os
 
-print os.getcwd()
-print(os.path.dirname(os.path.realpath(__file__)))
+#print os.getcwd()
+#print(os.path.dirname(os.path.realpath(__file__)))
 
 MODEL_NAME = 'light_classification/inferencemodel'
 
@@ -89,16 +89,16 @@ output_dict = run_inference_for_single_image(image_np, detection_graph)
 color_dict = {1: {'name': 'red', 'id': 1}, 2: {'name': 'yellow', 'id': 2}, 3: {'name': 'green', 'id': 3}}
 i=0
 ids = [i for i in range(len(output_dict['detection_scores'])) if output_dict['detection_scores'][i] > 0.5]
-print (ids)
+#print (ids)
 #print(output_dict['detection_scores'])
 #print(output_dict['detection_classes'])
 classes = [output_dict['detection_classes'][element] for element in ids]
-print (classes)
+#print (classes)
 
 #print (color_dict[1]['name'])
 
 output_colors = [color_dict[element]['name'] for element in classes]
-print (output_colors)
+#print (output_colors)
 
 
 
