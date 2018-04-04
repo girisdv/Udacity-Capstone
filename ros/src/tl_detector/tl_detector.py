@@ -18,6 +18,7 @@ TL_DISTANCE_LIMIT = 150
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
+        rospy.logwarn("TL detect: init")
 
         self.pose = None
         self.waypoints = None
@@ -201,33 +202,27 @@ class TLDetector(object):
 
         #TODO find the closest visible traffic light (if one exists)
 		
-        tl_state = TrafficLight.UNKNOWN
+        sim_tl_state = TrafficLight.UNKNOWN
 
         # this is debug path only
         if (-1<tl_position):
             if (tl_use):
                 light = self.lights[tl_position]
+                light_stop_line_position, _, _ = self.get_closest_waypoint(self.lights[tl_position].pose.pose, self.stop_lines)
+                light_wp, _, _ = self.get_closest_waypoint(self.stop_lines[light_stop_line_position].pose.pose, self.waypoints.waypoints)
                 
-            tl_state = self.lights[tl_position].state
-            light_stop_line_position, _, _ = self.get_closest_waypoint(self.lights[tl_position].pose.pose, self.stop_lines)
-            light_wp, _, _ = self.get_closest_waypoint(self.stop_lines[light_stop_line_position].pose.pose, self.waypoints.waypoints)
+            sim_tl_state = self.lights[tl_position].state
 
-        #rospy.loginfo_throttle(1, "ptl: " + str(tl_use) + " car=" + str(car_position)
-        #    + " tlp=" + str(tl_position) + " dtl=" + str(car_dist_tl) + " (dir_tl=" + str(car_dir_tl) + " h=" + str(self.heading) 
-        #    + " tla=" + str(tl_angle)
-        #    + ") tlst=" + str(tl_state) + " atlst=" + str(self.lights[1].state) + " wpi=" + str(light_wp) )
-
-        rospy.loginfo_throttle(5, "ptl car=" + str(car_position))
+        rospy.loginfo_throttle(5, "ptl car at wp " + str(car_position))
         
         if light:
-            state_classifier = self.get_light_state(light)
-            #state = tl_state
-            state = state_classifier
-            rospy.loginfo("ptl: " + str(state_classifier) + " " + str(tl_state))
+            state = self.get_light_state(light)
+            rospy.loginfo("ptl: c=" + str(state) + " sim" + str(sim_tl_state))
             
             return light_wp, state
  
         
+        # found nothing
         return -1, TrafficLight.UNKNOWN
         
 if __name__ == '__main__':
