@@ -141,7 +141,7 @@ class TLClassifier(object):
         if ((classes.count(1)==0) and (classes.count(2)==0) and (classes.count(3)==0)):
                 return TrafficLight.UNKNOWN
 
-    def get_classification(self, image)
+    def get_cv_classification(self, image):
         """Determines the color of the traffic light in the image
         Args:
             image (cv::Mat): image containing the traffic light

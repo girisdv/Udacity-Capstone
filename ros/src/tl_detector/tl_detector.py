@@ -208,7 +208,7 @@ class TLDetector(object):
         #height, width, channels = cv_image.shape
         
         #Get classification
-        #tl_result = self.light_classifier.get_classification(cv_image)
+        #tl_result = self.light_classifier.get_cv_classification(cv_image)
         return tl_result
 
     def process_traffic_lights(self):
